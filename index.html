@@ -39,8 +39,10 @@
         .btn:disabled { background: #ccc; cursor: not-allowed; }
         .btn-stop { background: #ff3b30; }
         .btn-export { background: #34c759; margin-top: 15px; }
+        
         #status { 
-            font-size: 15px; 
+            font-size: 14px; 
+            line-height: 1.5;
             margin: 12px 0; 
             padding: 12px; 
             background: #eef5ff; 
@@ -49,29 +51,59 @@
             word-break: break-all; 
         }
 
-        /* 学生列表样式 */
+        /* 快捷录入框 */
+        .manual-input-box {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .manual-input-box input {
+            flex: 1;
+            padding: 10px 12px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 15px;
+            outline: none;
+        }
+        .manual-input-box button {
+            padding: 10px 16px;
+            background: #34c759;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        /* 学生列表网格 */
         .student-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(95px, 1fr));
             gap: 10px;
-            margin-top: 15px;
-            max-height: 350px;
+            margin-top: 12px;
+            max-height: 380px;
             overflow-y: auto;
-            padding: 5px;
+            padding: 4px;
         }
         .student-item {
             background: #f2f2f7;
-            padding: 10px 8px;
+            padding: 10px 6px;
             border-radius: 8px;
             text-align: center;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 500;
             border: 1px solid #e5e5ea;
-            transition: all 0.3s ease;
+            user-select: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
             gap: 4px;
+        }
+        .student-item:active {
+            transform: scale(0.96);
         }
         .student-item.checked {
             background: #e1f9e6;
@@ -80,7 +112,7 @@
             font-weight: bold;
         }
         .badge {
-            font-size: 12px;
+            font-size: 11px;
             padding: 2px 6px;
             border-radius: 10px;
             background: #e5e5ea;
@@ -107,11 +139,17 @@
 
     <!-- 学生实时状态显示区域 -->
     <div id="listCard" class="card" style="display:none;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h3 style="margin:0;">👥 全班学生名单</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h3 style="margin:0;">👥 学生名单 <small style="font-weight:normal; font-size:12px; color:#666;">(可点姓名手动打勾)</small></h3>
             <span style="font-size: 14px; color: #666;">
                 已交: <b id="checkedCount" style="color:#34c759;">0</b> / <span id="totalCount">0</span>
             </span>
+        </div>
+
+        <!-- 手动/语音键盘快速补录框 -->
+        <div class="manual-input-box">
+            <input type="text" id="manualNameInput" placeholder="直接输入名字或用手机键盘语音输入...">
+            <button id="manualAddBtn">打勾</button>
         </div>
 
         <div id="studentGrid" class="student-grid"></div>
@@ -124,6 +162,7 @@
         let allStudents = [];      
         let checkedStudents = new Set(); 
         let recognition = null;
+        let isListening = false; // 标记用户是否主动处于监听状态
 
         // 1. 读取 Excel 并显示名单
         document.getElementById('excelFile').addEventListener('change', function(e) {
@@ -150,7 +189,7 @@
                 });
 
                 if (allStudents.length > 0) {
-                    document.getElementById('status').innerText = `✅ 导入成功！共 ${allStudents.length} 名学生。`;
+                    document.getElementById('status').innerHTML = `✅ <b>导入成功！</b>共 ${allStudents.length} 名学生。<br>点击“开始语音打勾”或直接点击下方名字打勾。`;
                     document.getElementById('startBtn').disabled = false;
                     
                     renderStudentList();
@@ -163,7 +202,7 @@
             reader.readAsArrayBuffer(file);
         });
 
-        // 2. 渲染学生列表
+        // 2. 渲染学生列表（支持直接点击卡片打勾）
         function renderStudentList() {
             const grid = document.getElementById('studentGrid');
             grid.innerHTML = '';
@@ -175,8 +214,23 @@
                 item.id = `student-item-${index}`;
                 item.innerHTML = `
                     <span>${name}</span>
-                    <span class="badge">${isChecked ? '✅' : '未交'}</span>
+                    <span class="badge">${isChecked ? '已交' : '未交'}</span>
                 `;
+                
+                // 支持直接点击名字打勾 / 取消打勾
+                item.addEventListener('click', function() {
+                    if (checkedStudents.has(name)) {
+                        checkedStudents.delete(name);
+                        item.className = 'student-item';
+                        item.querySelector('.badge').innerText = '未交';
+                    } else {
+                        checkedStudents.add(name);
+                        item.className = 'student-item checked';
+                        item.querySelector('.badge').innerText = '已交';
+                    }
+                    document.getElementById('checkedCount').innerText = checkedStudents.size;
+                });
+
                 grid.appendChild(item);
             });
 
@@ -184,7 +238,7 @@
             document.getElementById('totalCount').innerText = allStudents.length;
         }
 
-        // 3. 标记学生打勾
+        // 3. 标记学生打勾函数
         function markStudentChecked(name) {
             if (!checkedStudents.has(name)) {
                 checkedStudents.add(name);
@@ -194,7 +248,7 @@
                     const item = document.getElementById(`student-item-${index}`);
                     if (item) {
                         item.className = 'student-item checked';
-                        item.querySelector('.badge').innerText = '✅';
+                        item.querySelector('.badge').innerText = '已交';
                         item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                     }
                 }
@@ -205,11 +259,35 @@
             return false;
         }
 
-        // 4. 初始化语音识别
+        // 4. 手动快捷打勾功能
+        function handleManualCheck() {
+            const input = document.getElementById('manualNameInput');
+            const text = input.value.trim();
+            if (!text) return;
+
+            let found = false;
+            for (let name of allStudents) {
+                if (text.includes(name) || name.includes(text)) {
+                    markStudentChecked(name);
+                    document.getElementById('status').innerHTML = `手动打勾：<b style="color:#34c759;">✅ 【${name}】已打勾</b>`;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                document.getElementById('status').innerHTML = `<span style="color:#ff9500;">❓ 没找到匹配名字：${text}</span>`;
+            }
+            input.value = '';
+        }
+
+        document.getElementById('manualAddBtn').addEventListener('click', handleManualCheck);
+        document.getElementById('manualNameInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') handleManualCheck();
+        });
+
+        // 5. 初始化语音识别（抗干扰优化版）
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            alert('当前浏览器不支持语音识别，请使用 Safari (iOS) 或 Chrome (Android) 打开。');
-        } else {
+        if (SpeechRecognition) {
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = false;
@@ -231,7 +309,7 @@
                         if (isNew) {
                             document.getElementById('status').innerHTML = `听到："<b>${text}</b>"<br><span style="color:#34c759; font-weight:bold;">✅ 【${name}】已打勾！</span>`;
                         } else {
-                            document.getElementById('status').innerHTML = `听到："<b>${text}</b>"<br><span style="color:#8e8e93;">⚠️ 【${name}】此前已经打过勾了</span>`;
+                            document.getElementById('status').innerHTML = `听到："<b>${text}</b>"<br><span style="color:#8e8e93;">⚠️ 【${name}】此前已打过勾</span>`;
                         }
                         matched = true;
                         break;
@@ -243,18 +321,54 @@
                 }
             };
 
+            // 忽略无声音静音超时，持续自动重启录音
+            recognition.onend = function() {
+                if (isListening) {
+                    try {
+                        recognition.start(); // 保持录音连贯
+                    } catch(e) {}
+                }
+            };
+
+            // 错误容忍处理
             recognition.onerror = function(event) {
-                document.getElementById('status').innerText = '⚠️ 识别中断或出错，请点击开始重试。';
-                stopUI();
+                console.log("语音识别事件: ", event.error);
+                
+                // 静音超时（no-speech）完全忽略，不跳错
+                if (event.error === 'no-speech') {
+                    return; 
+                }
+
+                if (event.error === 'network') {
+                    document.getElementById('status').innerHTML = `
+                        <b style="color:#ff3b30;">⚠️ 语音网络连接受限 (Network Error)</b><br>
+                        <small style="color:#666;">
+                        • 安卓系统的语音识别需要访问谷歌云服务。<br>
+                        • <b>建议方案：</b>用 <b>iPhone (Safari)</b> 打开，或直接在下方<b>点击学生名字打勾</b>/使用输入法语音功能打勾。
+                        </small>`;
+                    stopUI();
+                    return;
+                }
+
+                if (event.error === 'not-allowed') {
+                    document.getElementById('status').innerHTML = `<b style="color:#ff3b30;">⚠️ 麦克风权限已被拒绝</b><br><small>请在手机浏览器设置中允许该页面使用麦克风。</small>`;
+                    stopUI();
+                    return;
+                }
             };
         }
 
         document.getElementById('startBtn').addEventListener('click', function() {
+            if (!SpeechRecognition) {
+                alert('当前浏览器暂不支持 Web 语音接口，请直接点击下方学生名字进行打勾！');
+                return;
+            }
             try {
+                isListening = true;
                 recognition.start();
                 document.getElementById('startBtn').style.display = 'none';
                 document.getElementById('stopBtn').style.display = 'block';
-                document.getElementById('status').innerText = '🎤 正在倾听，请念学生姓名（说“结束”可停止）：';
+                document.getElementById('status').innerText = '🎤 正在倾听中...请念名字（说“结束”可停止）：';
             } catch(e) {
                 console.log(e);
             }
@@ -263,12 +377,16 @@
         document.getElementById('stopBtn').addEventListener('click', stopRecognition);
 
         function stopUI() {
+            isListening = false;
             document.getElementById('startBtn').style.display = 'block';
             document.getElementById('stopBtn').style.display = 'none';
         }
 
         function stopRecognition() {
-            if (recognition) recognition.stop();
+            isListening = false;
+            if (recognition) {
+                try { recognition.stop(); } catch(e){}
+            }
             stopUI();
             
             const unsubmittedCount = allStudents.length - checkedStudents.size;
@@ -279,7 +397,7 @@
             }
         }
 
-        // 5. 导出 Excel 并自动重置数据
+        // 6. 导出 Excel 并自动重置数据
         document.getElementById('exportBtn').addEventListener('click', function() {
             const unsubmitted = allStudents.filter(name => !checkedStudents.has(name));
             if (unsubmitted.length === 0) {
@@ -287,7 +405,6 @@
                 return;
             }
             
-            // 生成并下载表格
             const exportData = unsubmitted.map(name => ({ '未交作业名单': name }));
             const worksheet = XLSX.utils.json_to_sheet(exportData);
             const workbook = XLSX.utils.book_new();
@@ -296,10 +413,10 @@
             const dateStr = new Date().toLocaleDateString().replace(/\//g, '-');
             XLSX.writeFile(workbook, `未交作业名单_${dateStr}.xlsx`);
 
-            // --- 🛡️ 自动重置逻辑 ---
-            checkedStudents.clear(); // 清空打勾记录
-            renderStudentList();     // 刷新界面，所有学生恢复“未交”状态
-            document.getElementById('exportBtn').style.display = 'none'; // 隐藏导出按钮
+            // 重置逻辑
+            checkedStudents.clear();
+            renderStudentList();
+            document.getElementById('exportBtn').style.display = 'none';
             document.getElementById('status').innerHTML = `🔄 <b>数据已导出并成功重置！</b><br>当前名单已清空，可直接开始下一轮考勤。`;
         });
     </script>
