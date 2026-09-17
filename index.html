@@ -73,7 +73,6 @@
             justify-content: center;
             gap: 4px;
         }
-        /* 已打勾状态样式 */
         .student-item.checked {
             background: #e1f9e6;
             color: #155724;
@@ -117,16 +116,16 @@
 
         <div id="studentGrid" class="student-grid"></div>
 
-        <!-- 结束后的导出按钮 -->
-        <button id="exportBtn" class="btn btn-export" style="display:none;">⬇️ 导出未交名单 Excel</button>
+        <!-- 导出按钮 -->
+        <button id="exportBtn" class="btn btn-export" style="display:none;">⬇️ 导出未交名单 Excel 并重置数据</button>
     </div>
 
     <script>
-        let allStudents = [];      // 保存所有学生名字数组
-        let checkedStudents = new Set(); // 保存已打勾的学生集合
+        let allStudents = [];      
+        let checkedStudents = new Set(); 
         let recognition = null;
 
-        // 1. 读取手机上传的 Excel 并显示名单
+        // 1. 读取 Excel 并显示名单
         document.getElementById('excelFile').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if(!file) return;
@@ -154,7 +153,6 @@
                     document.getElementById('status').innerText = `✅ 导入成功！共 ${allStudents.length} 名学生。`;
                     document.getElementById('startBtn').disabled = false;
                     
-                    // 渲染页面学生列表
                     renderStudentList();
                     document.getElementById('listCard').style.display = 'block';
                     document.getElementById('exportBtn').style.display = 'none';
@@ -165,7 +163,7 @@
             reader.readAsArrayBuffer(file);
         });
 
-        // 2. 渲染学生列表到页面
+        // 2. 渲染学生列表
         function renderStudentList() {
             const grid = document.getElementById('studentGrid');
             grid.innerHTML = '';
@@ -182,29 +180,25 @@
                 grid.appendChild(item);
             });
 
-            // 更新计数
             document.getElementById('checkedCount').innerText = checkedStudents.size;
             document.getElementById('totalCount').innerText = allStudents.length;
         }
 
-        // 3. 标记某个学生打勾，并同步更新页面
+        // 3. 标记学生打勾
         function markStudentChecked(name) {
             if (!checkedStudents.has(name)) {
                 checkedStudents.add(name);
                 
-                // 查找索引并局部更新元素
                 const index = allStudents.indexOf(name);
                 if (index !== -1) {
                     const item = document.getElementById(`student-item-${index}`);
                     if (item) {
                         item.className = 'student-item checked';
                         item.querySelector('.badge').innerText = '✅';
-                        // 自动滚动到该学生位置，方便查看
                         item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                     }
                 }
                 
-                // 更新已交人数
                 document.getElementById('checkedCount').innerText = checkedStudents.size;
                 return true;
             }
@@ -231,7 +225,6 @@
                 }
 
                 let matched = false;
-                // 匹配名字
                 for (let name of allStudents) {
                     if (text.includes(name) || name.includes(text)) {
                         const isNew = markStudentChecked(name);
@@ -281,13 +274,12 @@
             const unsubmittedCount = allStudents.length - checkedStudents.size;
             document.getElementById('status').innerHTML = `🛑 <b>录入完成！</b><br>全班 ${allStudents.length} 人，已交 ${checkedStudents.size} 人，<b style="color:#ff3b30;">未交 ${unsubmittedCount} 人</b>。`;
 
-            // 显示导出按钮
             if (unsubmittedCount > 0) {
                 document.getElementById('exportBtn').style.display = 'block';
             }
         }
 
-        // 5. 导出未交名单为 Excel
+        // 5. 导出 Excel 并自动重置数据
         document.getElementById('exportBtn').addEventListener('click', function() {
             const unsubmitted = allStudents.filter(name => !checkedStudents.has(name));
             if (unsubmitted.length === 0) {
@@ -295,6 +287,7 @@
                 return;
             }
             
+            // 生成并下载表格
             const exportData = unsubmitted.map(name => ({ '未交作业名单': name }));
             const worksheet = XLSX.utils.json_to_sheet(exportData);
             const workbook = XLSX.utils.book_new();
@@ -302,6 +295,12 @@
             
             const dateStr = new Date().toLocaleDateString().replace(/\//g, '-');
             XLSX.writeFile(workbook, `未交作业名单_${dateStr}.xlsx`);
+
+            // --- 🛡️ 自动重置逻辑 ---
+            checkedStudents.clear(); // 清空打勾记录
+            renderStudentList();     // 刷新界面，所有学生恢复“未交”状态
+            document.getElementById('exportBtn').style.display = 'none'; // 隐藏导出按钮
+            document.getElementById('status').innerHTML = `🔄 <b>数据已导出并成功重置！</b><br>当前名单已清空，可直接开始下一轮考勤。`;
         });
     </script>
 </body>
